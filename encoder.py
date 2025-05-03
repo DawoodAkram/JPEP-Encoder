@@ -49,6 +49,33 @@ def block_process(channel, quant_matrix):
             compressed[i:i+8, j:j+8] = quant_block
     return compressed
 
+def zigzag_order(block):
+    index_order = sorted(((x, y) for x in range(8) for y in range(8)),
+                         key=lambda p: (p[0] + p[1], -p[1] if (p[0] + p[1]) % 2 else p[1]))
+    return [block[i, j] for i, j in index_order]
+
+def run_length_encode(zigzag_list):
+    encoded = []
+    zero_count = 0
+
+    # First element is DC, store it separately
+    encoded.append(("DC", zigzag_list[0]))
+
+    # Process AC coefficients
+    for coeff in zigzag_list[1:]:
+        if coeff == 0:
+            zero_count += 1
+        else:
+            encoded.append((zero_count, coeff))
+            zero_count = 0
+
+    # End-of-Block marker
+    if zero_count > 0:
+        encoded.append(("EOB", 0))
+
+    return encoded
+
+
 def jpeg_compress(image_path):
 
     img = cv2.imread(image_path)
@@ -77,7 +104,7 @@ def jpeg_compress(image_path):
     plt.axis('off')
 
     plt.tight_layout()
-    plt.show()
+    # plt.show()
 
     # Downsample chroma channels 
     Cb_ds = downsample(Cb)
@@ -89,8 +116,10 @@ def jpeg_compress(image_path):
         pad_h = 8 - (h % 8) if h % 8 else 0
         pad_w = 8 - (w % 8) if w % 8 else 0
         return np.pad(channel, ((0, pad_h), (0, pad_w)), mode='constant', constant_values=0)
-
+    print("Before Padding = ",Y)
     Y = pad(Y)
+    print("After Padding = ",Y)
+
     Cb_ds = pad(Cb_ds)
     Cr_ds = pad(Cr_ds)
 
@@ -110,3 +139,11 @@ compressed_size = Yq.size * 2 + Cbq.size * 2 + Crq.size * 2  # 2 bytes per int16
 
 print(f"Original image size: {original_size} bytes")
 print(f"Approximate compressed size (after quantization): {compressed_size} bytes")
+
+# Test zig-zag scan on one 8x8 block (for verification)
+sample_block = Yq[:8, :8]
+zigzagged = zigzag_order(sample_block)
+# print("Zig-zag output of top-left block in Y channel:\n", zigzagged)
+
+rle_encoded = run_length_encode(zigzagged)
+print("\nRun-Length Encoded:\n", rle_encoded)
